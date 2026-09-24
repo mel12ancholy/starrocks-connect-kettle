@@ -146,7 +146,10 @@ limitations under the License.
                         <exclude>README.md</exclude>
                         <exclude>.github/**</exclude>
                         <exclude>**/resources/**</exclude>
-                        <exclude>target/**</exclude>
+                        <!-- 必须用 **/target/** 才能同时排除子模块的 target。
+                             原来的 target/** 只锚定根目录，impl/target、ui/target 里的
+                             构建产物会被当成"无许可证头"的文件，导致 RAT 检查失败。 -->
+                        <exclude>**/target/**</exclude>
                         <exclude>**/logs/**</exclude>
                     </excludes>
                 </configuration>

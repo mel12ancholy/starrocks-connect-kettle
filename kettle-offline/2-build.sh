@@ -61,7 +61,15 @@ cd "$PROJECT_DIR"
 #       产物字节码高于运行时会 UnsupportedClassVersionError。
 #       公司机器 Kettle 为 8.3.0.0-371，故目标为 Java 8。
 #   不要加 -o：第一次构建需要联网从中央仓库/镜像下载插件与依赖。
-"$MVN" -B clean package -Dmaven.test.skip=true "$@"
+#
+#   clean 单独跑一次、不写成 `clean package`：
+#       `mvn clean package` 是"逐模块"执行的 —— 根模块先 clean→package（RAT 就在这一步），
+#       此时 impl/target、ui/target 还是上一次构建的残留，RAT 会扫到它们并报
+#       "Too many files with unapproved license"。
+#       先单独 `mvn clean` 能把所有模块的 target 一次清干净。
+#       想彻底跳过许可证审计，加参数即可：bash 2-build.sh -Drat.skip=true
+"$MVN" -B clean
+"$MVN" -B package -Dmaven.test.skip=true "$@"
 
 echo
 echo "============================================================"
