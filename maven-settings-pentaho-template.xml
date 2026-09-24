@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Pentaho 私有仓库凭据模板
+  放置位置：C:\Users\<你的用户名>\.m2\settings.xml
+
+  说明：
+  repo.pentaho.com 是 Hitachi Vantara 迁移后的 JFrog 仓库，所有仓库路径均返回
+  401 Unauthorized（匿名不可读），必须在 <servers> 中配置 Basic 认证凭据。
+  凭据来源：Pentaho / Hitachi Vantara 社区账号，或向管理员索取只读账号。
+
+  注意：<server> 的 <id> 必须与 pom.xml 中 <repository>/<pluginRepository> 的 <id> 完全一致，
+        否则 Maven 不会把凭据附加到该仓库请求上。
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+
+  <!-- 本地仓库（可选，默认 ~/.m2/repository） -->
+  <!-- <localRepository>D:/maven-repo</localRepository> -->
+
+  <mirrors>
+    <!-- 只镜像 central，绝对不要写 <mirrorOf>*</mirrorOf>，
+         否则会把 pentaho-public 也劫持到阿里云，导致 kettle 依赖 404 -->
+    <mirror>
+      <id>aliyun-central</id>
+      <name>Aliyun Central Mirror</name>
+      <url>https://maven.aliyun.com/repository/public</url>
+      <mirrorOf>central</mirrorOf>
+    </mirror>
+  </mirrors>
+
+  <servers>
+    <!-- id 必须与 pom.xml 中两个 pentaho 仓库的 id 对应 -->
+    <server>
+      <id>pentaho-public</id>
+      <username>请填写你的 Pentaho 账号</username>
+      <password>请填写你的 Pentaho 密码</password>
+    </server>
+    <server>
+      <id>pentaho-public-plugins</id>
+      <username>请填写你的 Pentaho 账号</username>
+      <password>请填写你的 Pentaho 密码</password>
+    </server>
+  </servers>
+
+  <profiles>
+    <profile>
+      <id>pentaho-repo</id>
+      <repositories>
+        <repository>
+          <id>pentaho-public</id>
+          <name>Pentaho Public</name>
+          <url>https://repo.pentaho.com/artifactory/pnt-mvn/</url>
+          <releases>
+            <enabled>true</enabled>
+            <updatePolicy>daily</updatePolicy>
+          </releases>
+          <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>interval:15</updatePolicy>
+          </snapshots>
+        </repository>
+      </repositories>
+      <pluginRepositories>
+        <pluginRepository>
+          <id>pentaho-public-plugins</id>
+          <name>Pentaho Public Plugins</name>
+          <url>https://repo.pentaho.com/artifactory/pnt-mvn/</url>
+          <releases>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+          </releases>
+          <snapshots>
+            <enabled>false</enabled>
+          </snapshots>
+        </pluginRepository>
+      </pluginRepositories>
+    </profile>
+  </profiles>
+
+  <activeProfiles>
+    <activeProfile>pentaho-repo</activeProfile>
+  </activeProfiles>
+
+</settings>
