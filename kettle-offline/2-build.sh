@@ -57,8 +57,9 @@ cd "$PROJECT_DIR"
 #   -Dmaven.test.skip=true  跳过测试的编译与执行。
 #       必须加，因为测试代码依赖 kettle-core / kettle-engine 的 tests 分类器构件，
 #       这些构件只存在于 Pentaho 私有仓库，离线拿不到。
-#   release=11 由占位父 POM 锁定，保证产物是 Java 11 字节码
-#       （Kettle 9.5 跑在 Java 11 上，用 Java 17 字节码会 UnsupportedClassVersionError）。
+#   编译目标由占位父 POM 按 PDI 版本自动推导：PDI 8.x → Java 8，PDI 9.x → Java 11。
+#       产物字节码高于运行时会 UnsupportedClassVersionError。
+#       公司机器 Kettle 为 8.3.0.0-371，故目标为 Java 8。
 #   不要加 -o：第一次构建需要联网从中央仓库/镜像下载插件与依赖。
 "$MVN" -B clean package -Dmaven.test.skip=true "$@"
 

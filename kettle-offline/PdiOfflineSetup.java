@@ -165,6 +165,14 @@ public class PdiOfflineSetup {
                 + "（含 " + coords.size() + " 个构件）");
 
         // ---- 5. 生成占位父 POM ----
+        // 编译目标按 PDI 版本推导：PDI 7.x/8.x 运行在 Java 8，PDI 9.x 运行在 Java 11。
+        // 产物字节码高于运行时会导致插件加载时 UnsupportedClassVersionError。
+        int javaRelease;
+        try {
+            javaRelease = Integer.parseInt(targetVersion.split("\\.")[0].trim()) <= 8 ? 8 : 11;
+        } catch (Exception e) {
+            javaRelease = 8; // 解析失败时保守取 8，Java 8 字节码在所有运行时都能加载
+        }
         String stub = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                 + "<!-- 离线占位父 POM：替代 org.pentaho.di.plugins:pdi-plugins，仅提供编译所需的最小配置 -->\n"
                 + "<project xmlns=\"http://maven.apache.org/POM/4.0.0\">\n"
@@ -176,8 +184,8 @@ public class PdiOfflineSetup {
                 + "  <name>PDI Plugins (offline stub)</name>\n"
                 + "  <properties>\n"
                 + "    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>\n"
-                + "    <!-- 必须锁定 11：Kettle 9.5 运行在 Java 11 上，产物字节码不能高于 55 -->\n"
-                + "    <maven.compiler.release>11</maven.compiler.release>\n"
+                + "    <!-- 按目标 PDI 版本推导（PDI 8.x → 8，PDI 9.x → 11）；产物字节码不能高于运行时 -->\n"
+                + "    <maven.compiler.release>" + javaRelease + "</maven.compiler.release>\n"
                 + "  </properties>\n"
                 + "  <build>\n"
                 + "    <pluginManagement>\n"
