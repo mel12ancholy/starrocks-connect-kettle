@@ -100,11 +100,13 @@ mvn dependency:get -Dartifact=pentaho-kettle:kettle-core:9.5.0.0-240
 去公司电脑上找到 Kettle 安装目录，进入 `data-integration\lib`，看 `kettle-core-*.jar` 的文件名：
 
 ```
-kettle-core-9.5.0.0-240.jar   ← 版本是 9.5.0.0-240（项目默认值，最省事）
-kettle-core-9.4.0.1-467.jar   ← 版本不同，后面要改 pom（第 2 步会讲）
+kettle-core-8.3.0.0-371.jar   ← 你公司电脑实测就是这个版本，本项目已按它对齐
+kettle-core-9.5.0.0-240.jar   ← 上游默认值；换版本要同步改 pom（第 2 步会讲）
 ```
 
-> 这个项目默认锁定 **9.5.0.0-240**。版本不一致也能编，但必须同步改 pom，见第 2 步。
+> 上游默认锁定 **9.5.0.0-240**，但**本项目已改为 `8.3.0.0-371`**（匹配你公司机器）。
+> 版本不一致也能编，但必须同步改 `pom.xml` 的 `<pdi.version>` 和 `<parent><version>`，见第 2 步。
+> 另外编译目标会跟着版本自动变：PDI 8.x → Java 8 字节码，PDI 9.x → Java 11。
 
 ### 第 1 步：把 lib 目录拷到本地
 
@@ -207,7 +209,7 @@ D:\starrocks\kettle-src\assemblies\plugin\target\starrocks-kettle-connector-plug
 | 文件 | 改动 | 为什么 |
 |---|---|---|
 | `pom.xml` | 移除 pentaho 两个仓库声明（注释保留了原文） | 该仓库 401 无法使用，留着只会拖慢并产生误导性报错 |
-| `pom.xml` | `<pdi.version>` 保持 `9.5.0.0-240` | 需与你的 Kettle 版本一致 |
+| `pom.xml` | `<pdi.version>` 与 `<parent><version>` 改为 `8.3.0.0-371` | 你公司 Kettle 实测为 8.3.0.0-371，不一致会报找不到 `pdi-kettle-all` |
 | `pom.xml` | SWT `4.6` → `4.3` | 中央仓库只有 4.3，`provided` 作用域不影响功能 |
 | `pom.xml` | SDK `1.0-SNAPSHOT` → `1.0` | `1.0-SNAPSHOT` 从未发布 |
 | `impl/pom.xml` | 新增 `pentaho-kettle:pdi-kettle-all:pom:provided` | 一次性引入 lib 全部 jar |
