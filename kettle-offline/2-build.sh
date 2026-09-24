@@ -5,13 +5,17 @@
 #  用法:
 #     bash 2-build.sh [项目目录]
 #     默认项目目录为 ../kettle-src
+#
+#  注意：本地仓库路径由 Maven 自己决定，本脚本不需要（也不应该）干预。
 # ============================================================================
 set -euo pipefail
 
-# ---------- 按需修改下面两行 ----------
-JDK_HOME="${JDK_HOME:-D:/exercise/jdk-17.0.10}"
+# ---------- 按需修改 ----------
+# JDK 优先用环境变量 JAVA_HOME / JDK_HOME，都没设才用下面的默认值
+JDK_HOME="${JDK_HOME:-${JAVA_HOME:-D:/exercise/jdk-17.0.10}}"
+# Maven 优先用 PATH 上的 mvn，找不到才用 MAVEN_HOME
 MAVEN_HOME="${MAVEN_HOME:-D:/starrocks/tools/apache-maven-3.9.9}"
-# --------------------------------------
+# ------------------------------
 
 PROJECT_DIR="${1:-$(cd "$(dirname "$0")/.." && pwd)/kettle-src}"
 
@@ -20,17 +24,31 @@ if [ ! -f "$PROJECT_DIR/pom.xml" ]; then
   exit 1
 fi
 
-export JAVA_HOME="$JDK_HOME"
-MVN="$MAVEN_HOME/bin/mvn"
-[ -x "$MVN" ] || MVN="$MAVEN_HOME/bin/mvn.cmd"
-
-if [ ! -f "$MVN" ] && [ ! -x "$MVN" ]; then
-  echo "[错误] 找不到 mvn: $MVN"
+# ---------- 找 mvn：PATH 优先 ----------
+MVN=""
+if command -v mvn >/dev/null 2>&1; then
+  MVN="$(command -v mvn)"
+else
+  for c in "$MAVEN_HOME/bin/mvn" "$MAVEN_HOME/bin/mvn.cmd"; do
+    [ -f "$c" ] && { MVN="$c"; break; }
+  done
+fi
+if [ -z "$MVN" ]; then
+  echo "[错误] 找不到 mvn。请把 Maven 加进 PATH，或设置 MAVEN_HOME"
   exit 1
 fi
 
+export JAVA_HOME="$JDK_HOME"
+
 echo "项目目录 : $PROJECT_DIR"
+echo "Maven    : $MVN"
 echo "JAVA_HOME: $JAVA_HOME"
+echo
+
+# 顺手报告一下 Maven 实际使用的本地仓库，方便和灌仓库时的输出核对
+"$MVN" -B -q help:evaluate -Dexpression=settings.localRepository -DforceStdout 2>/dev/null \
+  | tr -d '\r' | grep -E '^[A-Za-z]:[\\/]|^/' | head -1 \
+  | sed 's/^/本地仓库 : /' || true
 echo
 
 cd "$PROJECT_DIR"
@@ -41,6 +59,7 @@ cd "$PROJECT_DIR"
 #       这些构件只存在于 Pentaho 私有仓库，离线拿不到。
 #   release=11 由占位父 POM 锁定，保证产物是 Java 11 字节码
 #       （Kettle 9.5 跑在 Java 11 上，用 Java 17 字节码会 UnsupportedClassVersionError）。
+#   不要加 -o：第一次构建需要联网从中央仓库/镜像下载插件与依赖。
 "$MVN" -B clean package -Dmaven.test.skip=true "$@"
 
 echo

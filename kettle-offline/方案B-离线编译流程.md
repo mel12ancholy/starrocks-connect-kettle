@@ -22,20 +22,40 @@
 
 ---
 
-## 二、你的 Maven 本地仓库在哪
+## 二、Maven 本地仓库在哪（**每台机器都可能不一样，必须先确认**）
 
-我已在你这台机器上实测确认（执行 `mvn help:evaluate -Dexpression=settings.localRepository`）：
+本地仓库路径不是固定的 `~/.m2/repository`，它会被 Maven 的 `settings.xml` 覆盖。**实测两台机器就不一样：**
+
+| 机器 | Maven | 本地仓库                                                        |
+|---|---|-------------------------------------------------------------|
+| 你的本地电脑 | `D:\starrocks\tools\apache-maven-3.9.9`（无 settings.xml） | `C:\Users\<用户名>\.m2\repository`                             |
+| 你的公司电脑 | `D:\Maven\apache-maven-3.9.11` | **`D:\Maven\apache-maven-3.9.11\repo`** ← 被 settings.xml 改过 |
+
+所以**在要执行编译的那台机器上**先跑这一条，记下输出：
+
+```bash
+mvn help:evaluate -Dexpression=settings.localRepository
+```
+
+> ⚠️ 不要加 `-o`（离线模式）。离线模式下 Maven 连 `maven-dependency-plugin` 自身都加载不了
+> （它要先下载 `doxia-sink-api`、`commons-text` 等插件依赖），会报
+> `Cannot access xxx in offline mode and the artifact ... has not been downloaded from it before`。
+> 这条报错跟你的项目无关，纯粹是 `-o` 引起的。
+
+好消息：**灌仓库工具已经会自动调用 mvn 探测这个路径**，你不用手工填。如果你手工传了一个和实际不一致的路径，工具会打印醒目告警：
 
 ```
-C:\Users\<用户名>\.m2\repository
+############################################################
+# 警告：你指定的本地仓库与 Maven 实际使用的仓库不一致！
+#   你指定的   : D:\Maven\apache-maven-3.9.11\repo
+#   Maven 实际 : C:\Users\<用户名>\.m2\repository
+############################################################
 ```
 
-你目前**没有** `settings.xml`（`C:\Users\<用户名>\.m2\` 下只有 `repository` 目录），所以走的就是 Maven 默认值，不会跑偏。
-
-灌入完成后，关键文件会出现在这些位置：
+灌入完成后，关键文件会出现在（以公司电脑为例）：
 
 ```
-C:\Users\<用户名>\.m2\repository\
+D:\Maven\apache-maven-3.9.11\repo\
 ├── org\pentaho\di\plugins\pdi-plugins\9.5.0.0-240\
 │       └── pdi-plugins-9.5.0.0-240.pom                    ← 占位父 POM
 ├── pentaho-kettle\
@@ -48,15 +68,28 @@ C:\Users\<用户名>\.m2\repository\
 └── ...（lib 目录里的其余 jar，按各自真实坐标落位）
 ```
 
-验证是否灌好，执行任一条：
+验证是否灌好：
 
 ```bash
-# 能看到本地仓库里存在即可（不需要联网）
-dir "C:\Users\<用户名>\.m2\repository\pentaho-kettle"
+# 方式一：直接看目录（最直观，不联网）
+dir "D:\Maven\apache-maven-3.9.11\repo\pentaho-kettle"
 
-# 用 Maven 验证能否解析
-mvn -o dependency:get -Dartifact=pentaho-kettle:kettle-core:9.5.0.0-240
+# 方式二：让 Maven 验证能否解析（注意：不要加 -o）
+mvn dependency:get -Dartifact=pentaho-kettle:kettle-core:9.5.0.0-240
 ```
+
+---
+
+## 二·五、在**哪台机器**上编译？
+
+两种都行，选一个：
+
+| 方案 | 做法 | 优点 | 缺点 |
+|---|---|---|---|
+| **A. 在公司电脑编译**（推荐） | 公司电脑上有 Kettle，直接把 `kettle-src` 项目拷过去，跑第 2、3 步 | 不用拷 200MB 的 lib | 要保证公司电脑能访问 Maven 中央仓库 |
+| **B. 在本地电脑编译** | 把公司电脑的 `lib` 目录拷回来，跑第 1、2、3 步 | 编译环境干净可控 | 要拷一次 lib 目录 |
+
+> 注意：**灌仓库和编译必须在同一台机器上做**。在公司电脑灌的仓库，本地电脑上的 Maven 是看不到的。
 
 ---
 
@@ -189,6 +222,9 @@ D:\starrocks\kettle-src\assemblies\plugin\target\starrocks-kettle-connector-plug
 - ✅ `release=11` + JDK 17 编译产出 `major version: 55`（Java 11 字节码，Kettle 9.5 能加载）
 - ✅ 用合成的假 lib 目录跑通全流程：父 POM 解析 → 依赖解析 → 进入 javac 编译
 - ✅ JDK 17 可以正常读取 SWT 4.3 / JFace 3.3（2007 年的老 jar）的 class 文件
+- ✅ 工具能自动调用 mvn 探测真实本地仓库（实测识别出 `C:\Users\<用户名>\.m2\repository`）
+- ✅ 手工传入与 Maven 不一致的仓库路径时，会打印醒目告警
+- ✅ 路径兼容 Git Bash 风格 `/d/...` 与 Windows 风格 `D:\...`；`--with-plugins` 可放任意位置；重复坐标自动去重并告警
 
 **未能验证的部分**（需要你在本地跑）：
 
@@ -199,7 +235,33 @@ D:\starrocks\kettle-src\assemblies\plugin\target\starrocks-kettle-connector-plug
 
 ## 五、常见报错与处理
 
-### 1. `程序包 org.pentaho.di.xxx 不存在` / `找不到符号`
+### 0. `Cannot access xxx in offline mode and the artifact ... has not been downloaded from it before`
+
+**这是 `-o` 造成的，跟项目无关。** 离线模式下 Maven 连插件本身都加载不了：
+
+```
+[ERROR] Cannot access aliyun-maven (https://maven.aliyun.com/repository/public) in offline mode
+        and the artifact org.apache.maven.doxia:doxia-sink-api:jar:1.12.0 has not been downloaded from it before.
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-dependency-plugin:3.7.0:get
+```
+
+**处理：去掉 `-o`。** 你机器能上中央仓库（公司 settings.xml 里配了阿里云镜像），第一次必须联网让 Maven 把插件和依赖下全。只有在**所有依赖都已缓存**之后，`-o` 才有意义。
+
+### 1. 编译成功但 Maven 说找不到 kettle 构件
+
+99% 是**本地仓库路径对不上**。先确认：
+
+```bash
+mvn help:evaluate -Dexpression=settings.localRepository
+```
+
+拿这个输出和灌仓库时工具打印的 `Maven 本地仓库` 一行对比，必须一致。不一致就用环境变量指定后重灌：
+
+```bash
+M2_REPO="D:\Maven\apache-maven-3.9.11\repo" bash 1-setup-repo.sh /d/starrocks/pdi-lib
+```
+
+### 2. `程序包 org.pentaho.di.xxx 不存在` / `找不到符号`
 
 说明有 jar 没进本地仓库。按顺序试：
 
@@ -207,8 +269,8 @@ D:\starrocks\kettle-src\assemblies\plugin\target\starrocks-kettle-connector-plug
 # a. 确认 lib 目录拷全了
 ls /d/starrocks/pdi-lib/lib | wc -l        # 正常应该有 100+ 个 jar
 
-# b. 确认仓库里确实写进去了
-ls "C:/Users/<用户名>/.m2/repository/pentaho-kettle/"
+# b. 确认仓库里确实写进去了（<本地仓库> 换成实际路径）
+ls "<本地仓库>/pentaho-kettle/"
 
 # c. 如果某些类在 plugins 目录下的插件包里，加上 --with-plugins 重跑
 #    （--with-plugins 可以放在任意位置，路径写成 Git Bash 风格 /d/... 也可以，工具会自动转换）
@@ -217,7 +279,7 @@ ls "C:/Users/<用户名>/.m2/repository/pentaho-kettle/"
 
 如果还是缺，看报错里的类名，去公司电脑上 `grep` 是哪个 jar 提供的，单独拷过来再跑一次工具。
 
-### 2. `UnsupportedClassVersionError` / 插件加载失败
+### 3. `UnsupportedClassVersionError` / 插件加载失败
 
 字节码版本高于 Kettle 运行的 JVM。占位父 POM 里已经用 `<maven.compiler.release>11</maven.compiler.release>` 锁死了，**不要删掉这行**。如果改过，检查产物：
 
@@ -226,33 +288,34 @@ javap -verbose impl/target/classes/com/starrocks/connector/kettle/steps/starrock
 # 必须是 55（Java 11）。如果是 61 就是 Java 17 字节码，Kettle 9.5 加载不了。
 ```
 
-### 3. `找不到符号 org.junit...`
+### 4. `找不到符号 org.junit...`
 
 忘了加 `-Dmaven.test.skip=true`。
 
-### 4. `Non-resolvable parent POM ... pdi-plugins`
+### 5. `Non-resolvable parent POM ... pdi-plugins`
 
-占位父 POM 没生成，或版本对不上。检查：
+占位父 POM 没生成，或版本对不上。检查（`<本地仓库>` 换成实际路径）：
 
 ```bash
-ls "C:/Users/<用户名>/.m2/repository/org/pentaho/di/plugins/pdi-plugins/"
+ls "<本地仓库>/org/pentaho/di/plugins/pdi-plugins/"
 ```
 
 目录名必须和 `pom.xml` 里 `<parent><version>` 完全一致。
 
-### 5. `assembly descriptor not found` / 没生成 zip
+### 6. `assembly descriptor not found` / 没生成 zip
 
 `assemblies/plugin/pom.xml` 里的 assembly 插件配置被改坏了，或者 `src/assembly/assembly.xml` 被删了。
 
-### 6. 编译很慢 / 一直卡在下载
+### 7. 编译很慢 / 一直卡在下载
 
-Maven 在尝试连仓库。加了 `-o` 走纯离线可以避免：
+Maven 在逐个尝试远程仓库。**先把依赖跑通一遍，之后**才可以用离线模式加速：
 
 ```bash
 mvn -o -B clean package -Dmaven.test.skip=true
 ```
 
-（前提是中央仓库依赖已经下过一遍，第一次不要加 `-o`。）
+> 但注意：`-o` 只有在插件和依赖**全部已缓存**之后才可用。如果报
+> `Cannot access xxx in offline mode`，说明还有东西没下过，去掉 `-o` 再跑一次即可。
 
 ---
 
@@ -262,7 +325,7 @@ mvn -o -B clean package -Dmaven.test.skip=true
 2. **SWT 用的是 Linux GTK 版本（4.3），这是编译用的。** 因为它是 `provided` 作用域，不会被打包；运行时用的是 Kettle 自带的 SWT，所以不影响 Windows 上使用。
 3. **工具只扫 `lib/`，不扫 `plugins/`。** 这是刻意的——`plugins/` 下是各种步骤插件，混进来可能引入冲突版本的公共库。真缺东西再用 `--with-plugins`。
 4. **换 Kettle 版本要重跑第 2 步。** 本地仓库里的构件是按版本号分目录的，版本变了就是另一套。
-5. **别把 `~/.m2/repository/org/pentaho` 或 `pentaho-kettle` 删了。** 删了就要重新灌。
+5. **别把本地仓库里的 `org/pentaho` 或 `pentaho-kettle` 目录删了。** 删了就要重新灌。注意路径是上一步实测出来的那个，不一定是 `~/.m2/repository`。
 
 ---
 

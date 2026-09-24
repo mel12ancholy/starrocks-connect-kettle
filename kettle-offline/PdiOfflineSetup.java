@@ -51,9 +51,34 @@ public class PdiOfflineSetup {
         }
 
         Path kettleHome = normalize(pos.get(0));
-        Path m2 = normalize(pos.size() >= 2 ? pos.get(1)
-                : System.getProperty("user.home") + File.separator + ".m2" + File.separator + "repository");
         String targetVersion = pos.size() >= 3 ? pos.get(2) : "9.5.0.0-240";
+
+        // ---- 0. 确定 Maven 本地仓库 ----
+        // 关键：本地仓库路径因机器而异（企业环境常被 settings.xml 改到别处），
+        // 所以优先问 Maven 自己，而不是想当然用 ~/.m2/repository。
+        Path detected = detectMavenLocalRepo();
+        Path m2;
+        boolean usingDetected = false;
+        if (pos.size() >= 2) {
+            m2 = normalize(pos.get(1));
+            if (detected != null && !samePath(m2, detected)) {
+                System.out.println();
+                System.out.println("############################################################");
+                System.out.println("# 警告：你指定的本地仓库与 Maven 实际使用的仓库不一致！");
+                System.out.println("#   你指定的   : " + m2);
+                System.out.println("#   Maven 实际 : " + detected);
+                System.out.println("# 灌到错误的位置 Maven 是找不到的，请确认后再继续。");
+                System.out.println("############################################################");
+                System.out.println();
+            }
+        } else if (detected != null) {
+            m2 = detected;
+            usingDetected = true;
+        } else {
+            m2 = normalize(System.getProperty("user.home") + File.separator + ".m2" + File.separator + "repository");
+            System.out.println("[提示] 未能调用 mvn 自动探测本地仓库，回退到默认值。");
+            System.out.println("       请务必与 `mvn help:evaluate -Dexpression=settings.localRepository` 的输出核对。");
+        }
 
         // ---- 1. 定位 lib 目录 ----
         Path libDir = kettleHome.resolve("lib");
@@ -67,7 +92,7 @@ public class PdiOfflineSetup {
 
         System.out.println("========================================================");
         System.out.println("  Kettle lib 目录 : " + libDir);
-        System.out.println("  Maven 本地仓库  : " + m2);
+        System.out.println("  Maven 本地仓库  : " + m2 + (usingDetected ? "   [由 mvn 自动探测]" : ""));
         System.out.println("  目标版本        : " + targetVersion);
         System.out.println("========================================================");
 
@@ -234,6 +259,50 @@ public class PdiOfflineSetup {
             s = s.replace('/', File.separatorChar);
         }
         return Paths.get(s).toAbsolutePath().normalize();
+    }
+
+    static boolean samePath(Path a, Path b) {
+        String x = a.toAbsolutePath().normalize().toString().replace('\\', '/');
+        String y = b.toAbsolutePath().normalize().toString().replace('\\', '/');
+        return x.equalsIgnoreCase(y);
+    }
+
+    /**
+     * 调用 mvn 询问真实的本地仓库路径。
+     * 企业环境的 settings.xml 经常把 localRepository 改到别处（例如 D:\Maven\apache-maven-x\repo），
+     * 直接假定 ~/.m2/repository 会把构件灌错地方。
+     */
+    static Path detectMavenLocalRepo() {
+        List<String> candidates = new ArrayList<>();
+        for (String exe : new String[]{"mvn", "mvn.cmd", "mvn.bat"}) candidates.add(exe);
+        for (String env : new String[]{"MAVEN_HOME", "M2_HOME"}) {
+            String home = System.getenv(env);
+            if (home != null && !home.isBlank()) {
+                for (String exe : new String[]{"mvn", "mvn.cmd", "mvn.bat"}) {
+                    candidates.add(Paths.get(home, "bin", exe).toString());
+                }
+            }
+        }
+        for (String exe : candidates) {
+            try {
+                ProcessBuilder pb = new ProcessBuilder(exe, "-B", "-q",
+                        "help:evaluate", "-Dexpression=settings.localRepository", "-DforceStdout");
+                pb.redirectErrorStream(true);
+                Process p = pb.start();
+                String out = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                p.waitFor();
+                for (String line : out.split("\\R")) {
+                    String t = line.trim();
+                    if (t.isEmpty()) continue;
+                    if (t.matches("^[A-Za-z]:[\\\\/].*") || t.startsWith("/")) {
+                        return normalize(t);
+                    }
+                }
+            } catch (Exception ignored) {
+                // 换下一个候选
+            }
+        }
+        return null;
     }
 
     static boolean looksLikeLib(Path dir) {
